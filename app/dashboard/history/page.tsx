@@ -6,6 +6,8 @@ import { useUser } from '@clerk/nextjs';
 import { Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { eq, desc } from 'drizzle-orm';
+import { Editor } from '@toast-ui/react-editor';
+import '@toast-ui/editor/dist/toastui-editor.css';
 
 export interface HISTORY {
   id: number;
@@ -21,6 +23,7 @@ const fetchHistoryByEmail = async (email: any) => {
   return data.map((item: any) => ({
     ...item,
     aiResponse: item.aiResponse ?? '', // Convert null to empty string 
+    formData: JSON.parse(item.formData || '{}'),
   }));
 };
 
@@ -44,20 +47,32 @@ const HistoryPage = () => {
   return (
     <div className="container mx-auto p-6">
       <h1 className="text-2xl font-bold mb-4">History</h1>
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 text-center font-semibold bg-gray-200 p-2">
-        <div>Template</div>
-        <div className="col-span-2">AI Response</div>
-        <div>Date</div>
-        <div>Copy</div>
-      </div>
       {history.map((item) => (
-        <div key={item.id} className="grid grid-cols-1 md:grid-cols-5 gap-6 p-3 border-b">
-          <div>{item.templateSlug}</div>
-          <div className="col-span-2 truncate">{item.aiResponse}</div>
-          <div className='md:mx-14'>{new Date(item.createdAt).toLocaleDateString()}</div>
-          <div className='md:mx-14'>
-            <Button className='flex gap-2' onClick={() => handleCopy(item.aiResponse)}><Copy className='w-4 h-4' /> Copy</Button>
+        <div key={item.id} className="mb-8 p-4 border rounded-lg shadow-md">
+          <h2 className="text-xl font-semibold mb-2">{item.templateSlug}</h2>
+          <p className="text-sm text-gray-500 mb-4">Created on: {new Date(item.createdAt).toLocaleString()}</p>
+          
+          <h3 className="font-medium mb-2">User Input:</h3>
+          <div className="bg-gray-100 p-3 rounded mb-4">
+            {Object.entries(item.formData).map(([key, value]) => (
+              <p key={key}><strong>{key}:</strong> {value as string}</p>
+            ))}
           </div>
+
+          <h3 className="font-medium mb-2">AI Response:</h3>
+          <div className="bg-white border rounded">
+            <Editor
+              initialValue={item.aiResponse}
+              height="1000px"
+              initialEditType="markdown"
+              useCommandShortcut={true}
+              viewer={true}
+            />
+          </div>
+
+          <Button className='flex gap-2 mt-4' onClick={() => handleCopy(item.aiResponse)}>
+            <Copy className='w-4 h-4' /> Copy Response
+          </Button>
         </div>
       ))}
     </div>
@@ -65,7 +80,3 @@ const HistoryPage = () => {
 };
 
 export default HistoryPage;
-
-
-
-
