@@ -39,7 +39,7 @@ function UsageTrack() {
   }
   return (
     <div className='m-5'>
-      <div className='bg-primary p-3 text-white rounded-lg'>
+      {/* <div className='bg-primary p-3 text-white rounded-lg'>
         <h2>Credits</h2>
         <div className='h-2 bg-[#9981f9] w-full rounded-full mt-3'>
             <div className='h-2 bg-white rounded-full'
@@ -49,7 +49,7 @@ function UsageTrack() {
         </div>
         <h2 className='text-sm my-2'>{totalUsage}/20,000 Credits used</h2>
       </div>
-      <Button variant = {'secondary'} className = 'w-full my-3 text-primary'>Upgrade</Button>
+      <Button variant = {'secondary'} className = 'w-full my-3 text-primary'>Upgrade</Button> */}
     </div>
   )
 }
