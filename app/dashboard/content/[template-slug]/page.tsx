@@ -13,6 +13,8 @@ import { AiOutput } from "@/utils/schema";
 import { useUser } from "@clerk/nextjs";
 import { TotalUsageContext } from "@/app/(context)/TotalUsageContext";
 import InterviewSection from "../_component/InterviewSection";
+import { generateAIResponse, AIProvider } from '@/app/actions/ai.actions';
+import Logger from '@/utils/logger';
 
 interface PROPS {
   params: {
@@ -32,41 +34,65 @@ function CreateNewContent(props: PROPS) {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [recordings, setRecordings] = useState<Blob[]>([]);
   const [feedback, setFeedback] = useState<string>("");
+  const [aiProvider, setAiProvider] = useState<AIProvider>('mistral');
+  const [initialFormData, setInitialFormData] = useState<any>(null);
 
   const GenerateAIContent = async (formData: any) => {
     setLoading(true);
+    setInitialFormData(formData);
+    
+    Logger.info('Starting content generation', { 
+      template: props.params["template-slug"],
+      provider: aiProvider,
+      formData
+    });
+
     try {
       if (props.params["template-slug"] === "ai-mock-interview") {
-        // Generate 5 questions for the interview
-        const questions = [];
-        for (let i = 0; i < 5; i++) {
-          const result = await chatSession.sendMessage(
-            JSON.stringify(formData) + ", " + selectedtemplate?.aiPrompt
-          );
-          const responseText = await result.response.text();
-          questions.push(responseText);
-        }
-        setQuestions(questions);
-        setAiOutput(questions[0]);
-      } else {
-        const selectedPrompt = selectedtemplate?.aiPrompt;
-        const finalPrompt = JSON.stringify(formData) + ", " + selectedPrompt;
+        const prompt = JSON.stringify({
+          role: formData.role,
+          topic: formData.topic,
+          experience: formData.experience,
+          action: 'Generate technical interview questions'
+        });
+        
+        Logger.debug('Sending interview prompt', { prompt });
+        
+        const response = await generateAIResponse([{
+          role: 'user',
+          content: prompt
+        }], aiProvider);
 
-        const result = await chatSession.sendMessage(finalPrompt);
-        const responseText = await result.response.text();
-        console.log(responseText);
-        setAiOutput(responseText);
-        await SaveInDb(
-          JSON.stringify(formData),
-          selectedtemplate?.slug,
-          responseText
-        );
-        // Update total usage
-        setTotalUsage((prevUsage) => prevUsage + 1);
+        if (!response || !Array.isArray(response) || response.length === 0) {
+          throw new Error('No valid questions received from AI service');
+        }
+
+        setQuestions(response);
+        setAiOutput(response[0]);
+        setCurrentQuestionIndex(0);
+      } else {
+        const prompt = `${selectedtemplate?.prompt} ${JSON.stringify(formData)}`;
+        const response = await generateAIResponse([{
+          role: 'user',
+          content: prompt
+        }], aiProvider);
+
+        if (response) {
+          setAiOutput(response);
+          await SaveInDb(JSON.stringify(formData), props.params["template-slug"], response);
+        }
       }
-    } catch (error) {
-      console.error("Error generating AI content:", error);
-      setAiOutput("An error occurred while generating content. Please try again.");
+    } catch (error: any) {
+      Logger.error('Content generation error', {
+        error: {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        },
+        template: props.params["template-slug"],
+        provider: aiProvider
+      });
+      setAiOutput(`An error occurred: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -82,21 +108,22 @@ function CreateNewContent(props: PROPS) {
       return;
     }
 
-    const createdBy = user?.primaryEmailAddress?.emailAddress;
-    if (!createdBy) {
-      console.error("User email is undefined");
-      return;
-    }
-
     try {
-      const result = await db.insert(AiOutput).values({
-        formData: formData,
+      // Ensure we're saving strings
+      const processedAiResp = typeof aiResp === 'string' ? aiResp : JSON.stringify(aiResp);
+      const processedFormData = typeof formData === 'string' ? formData : JSON.stringify(formData);
+
+      console.log('Saving to DB:', {
+        formData: processedFormData,
         templateSlug: slug,
-        aiResponse: aiResp,
-        createdBy: createdBy,
-        createdAt: new Date().toISOString(),
+        aiResponse: processedAiResp
       });
-      console.log("Database insert result:", result);
+
+      await db.insert(AiOutput).values({
+        formData: processedFormData,
+        templateSlug: slug,
+        aiResponse: processedAiResp,
+      });
     } catch (error) {
       console.error("Error saving to database:", error);
     }
@@ -104,8 +131,11 @@ function CreateNewContent(props: PROPS) {
 
   const handleNextQuestion = () => {
     if (currentQuestionIndex < questions.length - 1) {
-      setCurrentQuestionIndex(prev => prev + 1);
-      setAiOutput(questions[currentQuestionIndex + 1]);
+      setCurrentQuestionIndex(prev => {
+        const nextIndex = prev + 1;
+        setAiOutput(questions[nextIndex]);
+        return nextIndex;
+      });
     }
   };
 
@@ -114,61 +144,40 @@ function CreateNewContent(props: PROPS) {
     setLoading(true);
     
     try {
-      // Generate feedback based on the interview questions and answers
       const feedbackPrompt = `
-As an expert technical interviewer, provide detailed feedback for the following interview responses:
+        As an expert technical interviewer, provide detailed feedback for the following interview responses:
+        ${answers.map((qa, index) => `
+        Question ${index + 1}: ${qa.question}
+        Candidate's Answer: ${qa.answer}
+        `).join('\n')}
+        
+        Please provide comprehensive feedback in the following format:
+        Technical Accuracy:
+        Communication Skills:
+        Problem-Solving Approach:
+        Next Steps:
+        Overall Performance:`;
 
-${answers.map((qa, index) => `
-Question ${index + 1}: ${qa.question}
-Candidate's Answer: ${qa.answer}
-`).join('\n')}
-
-Please provide comprehensive feedback in the following format:
-
-Technical Accuracy:
-- Evaluate the technical correctness
-- Highlight specific technical concepts discussed
-- Note any misconceptions or errors
-
-Communication Skills:
-- Assess clarity and structure
-- Evaluate technical terminology usage
-- Comment on explanation effectiveness
-
-Problem-Solving Approach:
-- Analyze methodology and thought process
-- Evaluate solution design
-- Comment on alternative approaches considered
-
-Next Steps:
-- Specific areas for improvement
-- Recommended resources
-- Practice suggestions
-
-Overall Performance:
-- General assessment
-- Score out of 10
-- Key strengths and weaknesses
-
-Please provide specific, actionable feedback in each section.`;
+      const feedback = await generateAIResponse([{
+        role: 'user',
+        content: feedbackPrompt
+      }], aiProvider);
       
-      const result = await chatSession.sendMessage(feedbackPrompt);
-      const feedbackText = await result.response.text();
-      setFeedback(feedbackText);
-      setAiOutput(feedbackText);
+      setFeedback(feedback);
+      setAiOutput(feedback);
       
-      // Save interview results to database
       await SaveInDb(
         JSON.stringify({
           questions: answers.map(a => a.question),
           answers: answers.map(a => a.answer)
         }),
         selectedtemplate?.slug,
-        feedbackText
+        feedback
       );
       
     } catch (error) {
       console.error("Error generating feedback:", error);
+      setAiOutput("An error occurred while generating feedback.");
     } finally {
       setLoading(false);
     }
@@ -176,12 +185,25 @@ Please provide specific, actionable feedback in each section.`;
 
   return (
     <div className="p-10">
-      <Link href="/dashboard">
-        <Button>
-          <ArrowLeft />
-          Back
-        </Button>
-      </Link>
+      <div className="flex justify-between items-center">
+        <Link href="/dashboard">
+          <Button>
+            <ArrowLeft />
+            Back
+          </Button>
+        </Link>
+        <div className="flex items-center gap-4">
+          <label className="text-sm font-medium">AI Provider:</label>
+          <select
+            value={aiProvider}
+            onChange={(e) => setAiProvider(e.target.value as AIProvider)}
+            className="border rounded px-3 py-1"
+          >
+            <option value="mistral">Mistral AI</option>
+            <option value="gemini">Google Gemini</option>
+          </select>
+        </div>
+      </div>
       <div className="grid grid-cols-1 gap-10 py-5">
         {!questions.length ? (
           <FormSection

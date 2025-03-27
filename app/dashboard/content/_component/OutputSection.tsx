@@ -1,129 +1,152 @@
 import React from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Code2, MessageSquare, Brain, TrendingUp, AlertCircle, Award } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 
 interface PROPS {
   aiOutput: string;
 }
 
-function OutputSection({aiOutput}: PROPS) {
-  const sections = aiOutput.split('\n\n').reduce((acc: any, section) => {
-    // Remove asterisks and numbers from the start of lines
-    const cleanSection = section.replace(/^\d+\.\s*\*+\s*/gm, '').replace(/\*+/g, '');
+function OutputSection({ aiOutput }: PROPS) {
+  // Parse feedback sections
+  const sections = {
+    technicalAccuracy: '',
+    communicationSkills: '',
+    problemSolving: '',
+    nextSteps: '',
+    overallPerformance: ''
+  };
 
-    if (cleanSection.toLowerCase().includes('technical accuracy:')) {
-      acc.technical = cleanSection.replace(/technical accuracy:/i, '').trim();
-    } else if (cleanSection.toLowerCase().includes('communication skills:')) {
-      acc.communication = cleanSection.replace(/communication skills:/i, '').trim();
-    } else if (cleanSection.toLowerCase().includes('problem-solving approach:')) {
-      acc.problemSolving = cleanSection.replace(/problem-solving approach:/i, '').trim();
-    } else if (cleanSection.toLowerCase().includes('next steps:')) {
-      // Handle bullet points for next steps
-      const steps = cleanSection.split('\n')
-        .filter(line => line.trim())
-        .map(line => line.replace(/^\*\s+/, '').trim())
-        .join('\n');
-      acc.nextSteps = steps.replace(/next steps:/i, '').trim();
-    } else if (cleanSection.toLowerCase().includes('overall performance:')) {
-      acc.overall = cleanSection.replace(/overall performance:/i, '').trim();
-    }
-    return acc;
-  }, {});
+  try {
+    const lines = aiOutput.split('\n');
+    let currentSection = '';
 
-  // Ensure all sections have content
-  const defaultMessage = "No feedback provided for this section.";
-  sections.technical = sections.technical || defaultMessage;
-  sections.communication = sections.communication || defaultMessage;
-  sections.problemSolving = sections.problemSolving || defaultMessage;
-  sections.nextSteps = sections.nextSteps || defaultMessage;
-  sections.overall = sections.overall || defaultMessage;
+    lines.forEach(line => {
+      if (line.includes('Technical Accuracy:')) {
+        currentSection = 'technicalAccuracy';
+      } else if (line.includes('Communication Skills:')) {
+        currentSection = 'communicationSkills';
+      } else if (line.includes('Problem-Solving Approach:')) {
+        currentSection = 'problemSolving';
+      } else if (line.includes('Next Steps:')) {
+        currentSection = 'nextSteps';
+      } else if (line.includes('Overall Performance:')) {
+        currentSection = 'overallPerformance';
+      } else if (currentSection && line.trim()) {
+        sections[currentSection] += line.trim() + '\n';
+      }
+    });
+  } catch (error) {
+    console.error('Error parsing feedback:', error);
+  }
 
   return (
     <div className="space-y-6">
-      <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-none shadow-lg">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-3xl text-blue-800 flex items-center gap-3">
-            <Award className="w-8 h-8" />
-            Interview Feedback
-          </CardTitle>
-          <CardDescription className="text-base text-blue-600/80">
-            Comprehensive analysis of your performance
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-6 md:grid-cols-2 pt-6">
-          <Card className="border-l-4 border-l-blue-500 shadow-md hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Code2 className="w-5 h-5 text-blue-600" />
-                <span className="text-blue-800">Technical Proficiency</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="prose prose-blue">
-              {sections.technical?.split('\n').map((point: string, i: number) => (
-                <p key={i} className="text-gray-700 leading-relaxed">{point}</p>
-              ))}
-            </CardContent>
-          </Card>
+      <div className="flex items-center gap-3 mb-4">
+        <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center">
+          <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Interview Feedback</h2>
+          <p className="text-gray-600">Comprehensive analysis of your performance</p>
+        </div>
+      </div>
 
-          <Card className="border-l-4 border-l-green-500 shadow-md hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <MessageSquare className="w-5 h-5 text-green-600" />
-                <span className="text-green-800">Communication</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="prose prose-green">
-              {sections.communication?.split('\n').map((point: string, i: number) => (
-                <p key={i} className="text-gray-700 leading-relaxed">{point}</p>
-              ))}
-            </CardContent>
-          </Card>
-
-          <Card className="border-l-4 border-l-purple-500 shadow-md hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Brain className="w-5 h-5 text-purple-600" />
-                <span className="text-purple-800">Problem-Solving</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="prose prose-purple">
-              {sections.problemSolving?.split('\n').map((point: string, i: number) => (
-                <p key={i} className="text-gray-700 leading-relaxed">{point}</p>
-              ))}
-            </CardContent>
-          </Card>
-
-          <Card className="border-l-4 border-l-orange-500 shadow-md hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-orange-600" />
-                <span className="text-orange-800">Areas for Improvement</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="prose prose-orange">
-              {sections.nextSteps?.split('\n').map((point: string, i: number) => (
-                <p key={i} className="text-gray-700 leading-relaxed">{point}</p>
-              ))}
-            </CardContent>
-          </Card>
-
-          <Card className="md:col-span-2 border-l-4 border-l-indigo-500 shadow-md hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <AlertCircle className="w-5 h-5 text-indigo-600" />
-                <span className="text-indigo-800">Overall Assessment</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="prose prose-indigo">
-              {sections.overall?.split('\n').map((point: string, i: number) => (
-                <p key={i} className="text-gray-700 leading-relaxed">{point}</p>
-              ))}
-            </CardContent>
-          </Card>
-        </CardContent>
-      </Card>
+      <div className="grid gap-6">
+        <FeedbackCard
+          title="Technical Proficiency"
+          content={sections.technicalAccuracy}
+          icon={<CodeIcon />}
+          borderColor="border-blue-500"
+        />
+        <FeedbackCard
+          title="Communication"
+          content={sections.communicationSkills}
+          icon={<ChatIcon />}
+          borderColor="border-green-500"
+        />
+        <FeedbackCard
+          title="Problem-Solving"
+          content={sections.problemSolving}
+          icon={<BrainIcon />}
+          borderColor="border-purple-500"
+        />
+        <FeedbackCard
+          title="Areas for Improvement"
+          content={sections.nextSteps}
+          icon={<ChartIcon />}
+          borderColor="border-orange-500"
+        />
+        <FeedbackCard
+          title="Overall Assessment"
+          content={sections.overallPerformance}
+          icon={<StarIcon />}
+          borderColor="border-yellow-500"
+        />
+      </div>
     </div>
   );
 }
+
+interface FeedbackCardProps {
+  title: string;
+  content: string;
+  icon: React.ReactNode;
+  borderColor: string;
+}
+
+function FeedbackCard({ title, content, icon, borderColor }: FeedbackCardProps) {
+  return (
+    <Card className={cn("border-l-4", borderColor)}>
+      <CardContent className="p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="text-gray-600">{icon}</div>
+          <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+        </div>
+        <div className="prose max-w-none">
+          {content.split('\n').map((line, i) => (
+            line.trim() && (
+              <p key={i} className="text-gray-600 mb-2">
+                {line.trim()}
+              </p>
+            )
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Icons components
+const CodeIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+  </svg>
+);
+
+const ChatIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+  </svg>
+);
+
+const BrainIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+  </svg>
+);
+
+const ChartIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+  </svg>
+);
+
+const StarIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+  </svg>
+);
 
 export default OutputSection;
