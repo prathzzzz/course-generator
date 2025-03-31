@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Mic, MicOff, Camera, CameraOff, SkipForward, CheckCircle, Code2, Timer } from 'lucide-react';
 import { Card, CardHeader, CardContent, CardFooter, CardTitle, CardDescription } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { AudioAnalyzer, ToneAnalysis, AggregateAnalysis } from '@/app/utils/audioAnalyzer';
+import AudioAnalysisSummary from '@/app/components/AudioAnalysisSummary';
 
 declare global {
   interface Window {
@@ -56,6 +58,10 @@ const InterviewSection: React.FC<InterviewSectionProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const [toneAnalysis, setToneAnalysis] = useState<ToneAnalysis | null>(null);
+  const audioAnalyzerRef = useRef<AudioAnalyzer | null>(null);
+  const [showAnalysis, setShowAnalysis] = useState(false);
+  const [finalAnalysis, setFinalAnalysis] = useState<AggregateAnalysis | null>(null);
 
   useEffect(() => {
     setupMedia();
@@ -65,6 +71,9 @@ const InterviewSection: React.FC<InterviewSectionProps> = ({
       stream?.getTracks().forEach(track => track.stop());
       if (recognitionRef.current) {
         recognitionRef.current.stop();
+      }
+      if (audioAnalyzerRef.current) {
+        audioAnalyzerRef.current.stop();
       }
     };
   }, []);
@@ -151,6 +160,12 @@ const InterviewSection: React.FC<InterviewSectionProps> = ({
     if (!isRecording) {
       const stream = videoRef.current?.srcObject as MediaStream;
       if (stream) {
+        // Initialize audio analyzer
+        audioAnalyzerRef.current = new AudioAnalyzer((analysis) => {
+          setToneAnalysis(analysis);
+        });
+        await audioAnalyzerRef.current.start(stream);
+
         mediaRecorderRef.current = new MediaRecorder(stream);
         mediaRecorderRef.current.ondataavailable = (e) => {
           if (e.data.size > 0) {
@@ -169,6 +184,9 @@ const InterviewSection: React.FC<InterviewSectionProps> = ({
     } else {
       mediaRecorderRef.current?.stop();
       recognitionRef.current?.stop();
+      if (audioAnalyzerRef.current) {
+        audioAnalyzerRef.current.stop();
+      }
       setIsRecording(false);
     }
   };
@@ -204,6 +222,13 @@ const InterviewSection: React.FC<InterviewSectionProps> = ({
       mediaRecorderRef.current?.stop();
     }
     
+    // Get final analysis if available
+    if (audioAnalyzerRef.current) {
+      const analysis = audioAnalyzerRef.current.getAggregateAnalysis();
+      setFinalAnalysis(analysis);
+      setShowAnalysis(true);
+    }
+    
     // Save final answer before completing
     const finalAnswers = [
       ...answers,
@@ -219,8 +244,46 @@ const InterviewSection: React.FC<InterviewSectionProps> = ({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const ToneIndicator: React.FC<{ analysis: ToneAnalysis | null }> = ({ analysis }) => {
+    if (!analysis) return null;
+
+    const metrics = [
+      { label: 'Volume', value: analysis.volume, color: 'bg-blue-500' },
+      { label: 'Clarity', value: analysis.clarity, color: 'bg-green-500' },
+      { label: 'Confidence', value: analysis.confidence, color: 'bg-yellow-500' },
+      { label: 'Pace', value: analysis.metrics.pace, color: 'bg-purple-500' },
+      { label: 'Variation', value: analysis.metrics.variation, color: 'bg-pink-500' },
+      { label: 'Energy', value: analysis.metrics.energy, color: 'bg-orange-500' },
+      { label: 'Steadiness', value: analysis.metrics.steadiness, color: 'bg-teal-500' },
+    ];
+
+    return (
+      <div className="absolute top-4 right-4 bg-black/50 rounded-lg p-4 text-white text-sm">
+        <div className="flex flex-col gap-2">
+          {metrics.map(({ label, value, color }) => (
+            <div key={label} className="flex items-center gap-2">
+              <span className="w-20">{label}:</span>
+              <div className="w-24 h-2 bg-gray-700 rounded-full overflow-hidden">
+                <div 
+                  className={`h-full ${color} rounded-full transition-all duration-200`}
+                  style={{ width: `${value * 100}%` }}
+                />
+              </div>
+              <span className="w-8 text-right text-xs">
+                {Math.round(value * 100)}%
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="container mx-auto max-w-6xl">
+    <div className="space-y-6">
+      {showAnalysis && finalAnalysis && (
+        <AudioAnalysisSummary analysis={finalAnalysis} />
+      )}
       <Card className="bg-white">
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -251,31 +314,24 @@ const InterviewSection: React.FC<InterviewSectionProps> = ({
               <div className="prose max-w-none space-y-4">
                 {aiOutput.split('\n\n').map((section, i) => {
                   if (section.startsWith('**')) {
-                    // Handle section headers
                     return (
                       <h4 key={i} className="text-md font-semibold text-gray-800 mt-6 mb-2">
                         {section.replace(/\*\*/g, '')}
                       </h4>
                     );
                   } else if (section.startsWith('```')) {
-                    // Handle code blocks
                     const code = section.replace(/```(json|html)\n/, '').replace(/```$/, '');
                     return (
-                      <pre key={i} className="bg-gray-100 p-4 rounded-md font-mono text-sm overflow-x-auto">
+                      <pre key={i} className="bg-gray-800 text-gray-100 p-4 rounded-lg overflow-x-auto">
                         <code>{code}</code>
                       </pre>
                     );
-                  } else {
-                    // Handle regular paragraphs and lists
-                    return section.split('\n').map((line, j) => (
-                      <p key={`${i}-${j}`} className={cn(
-                        "text-gray-600",
-                        line.startsWith('*') || line.startsWith('-') ? "pl-4" : ""
-                      )}>
-                        {line}
-                      </p>
-                    ));
                   }
+                  return (
+                    <p key={i} className="text-gray-700">
+                      {section}
+                    </p>
+                  );
                 })}
               </div>
             </div>
@@ -297,6 +353,7 @@ const InterviewSection: React.FC<InterviewSectionProps> = ({
                       Recording
                     </div>
                   )}
+                  {toneAnalysis && <ToneIndicator analysis={toneAnalysis} />}
                 </div>
               </div>
 
@@ -362,4 +419,4 @@ const InterviewSection: React.FC<InterviewSectionProps> = ({
   );
 };
 
-export default InterviewSection; 
+export default InterviewSection;
