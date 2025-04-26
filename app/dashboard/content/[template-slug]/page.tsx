@@ -15,6 +15,7 @@ import { TotalUsageContext } from "@/app/(context)/TotalUsageContext";
 import InterviewSection from "../_component/InterviewSection";
 import { generateAIResponse, AIProvider } from '@/app/actions/ai.actions';
 import Logger from '@/utils/logger';
+import CourseOutputSection from "../_component/CourseOutputSection";
 
 interface PROPS {
   params: {
@@ -44,7 +45,9 @@ function CreateNewContent(props: PROPS) {
     Logger.info('Starting content generation', { 
       template: props.params["template-slug"],
       provider: aiProvider,
-      formData
+      formData,
+      userId: user?.id,
+      userEmail: user?.emailAddresses?.[0]?.emailAddress
     });
 
     try {
@@ -71,13 +74,20 @@ function CreateNewContent(props: PROPS) {
         setAiOutput(response[0]);
         setCurrentQuestionIndex(0);
       } else {
-        const prompt = `${selectedtemplate?.prompt} ${JSON.stringify(formData)}`;
+        const prompt = `${selectedtemplate?.aiPrompt} ${JSON.stringify(formData)}`;
+        Logger.debug('Sending content generation prompt', { prompt });
+        
         const response = await generateAIResponse([{
           role: 'user',
           content: prompt
         }], aiProvider);
 
         if (response) {
+          Logger.debug('Received AI response', { 
+            responseLength: response.length,
+            preview: response.substring(0, 100) + '...'
+          });
+          
           setAiOutput(response);
           await SaveInDb(JSON.stringify(formData), props.params["template-slug"], response);
         }
@@ -90,7 +100,8 @@ function CreateNewContent(props: PROPS) {
           stack: error.stack
         },
         template: props.params["template-slug"],
-        provider: aiProvider
+        provider: aiProvider,
+        formData
       });
       setAiOutput(`An error occurred: ${error.message}`);
     } finally {
@@ -108,6 +119,11 @@ function CreateNewContent(props: PROPS) {
       return;
     }
 
+    if (!user?.emailAddresses?.[0]?.emailAddress) {
+      console.error("User email not found");
+      return;
+    }
+
     try {
       // Ensure we're saving strings
       const processedAiResp = typeof aiResp === 'string' ? aiResp : JSON.stringify(aiResp);
@@ -116,13 +132,15 @@ function CreateNewContent(props: PROPS) {
       console.log('Saving to DB:', {
         formData: processedFormData,
         templateSlug: slug,
-        aiResponse: processedAiResp
+        aiResponse: processedAiResp,
+        createdBy: user.emailAddresses[0].emailAddress
       });
 
       await db.insert(AiOutput).values({
         formData: processedFormData,
         templateSlug: slug,
         aiResponse: processedAiResp,
+        createdBy: user.emailAddresses[0].emailAddress
       });
     } catch (error) {
       console.error("Error saving to database:", error);
@@ -206,11 +224,22 @@ function CreateNewContent(props: PROPS) {
       </div>
       <div className="grid grid-cols-1 gap-10 py-5">
         {!questions.length ? (
-          <FormSection
-            selectedTemplate={selectedtemplate}
-            userFormInput={GenerateAIContent}
-            loading={loading}
-          />
+          <>
+            <FormSection
+              selectedTemplate={selectedtemplate}
+              userFormInput={GenerateAIContent}
+              loading={loading}
+            />
+            {aiOutput && (
+              <div className="col-span-2">
+                {props.params["template-slug"] === "ai-mock-interview" ? (
+                  <OutputSection aiOutput={aiOutput} />
+                ) : (
+                  <CourseOutputSection aiOutput={aiOutput} />
+                )}
+              </div>
+            )}
+          </>
         ) : feedback ? (
           <div className="col-span-2">
             <OutputSection aiOutput={aiOutput} />
